@@ -2,6 +2,11 @@ import numpy as np
 import tensorflow as tf
 import sys
 import collections
+import os
+# ignore CPU warning as we use GPU anyway (
+# https://stackoverflow.com/questions/47068709/your-cpu-supports-instructions-that-this-tensorflow-binary-was-not
+# -compiled-to-u)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 def get_words(file_name):
@@ -26,7 +31,7 @@ def build_dictionary(words):
     return most_common_words, word2id, id2word
 
 
-words = get_words("the_hunger_games.txt")
+words = get_words("the_hunger_games_chapter_1_to_8.txt")
 most_common_words, word2id, id2word = build_dictionary(words)
 # number of different words in our training data
 number_of_different_words = len(most_common_words)
@@ -80,13 +85,13 @@ number_of_iterations = 100000
 number_hidden_units = 1024
 
 # X holds training data at the current batch
-X = tf.placeholder(tf.float32, shape=[batch_size, section_length])
+X = tf.placeholder(tf.float32, shape=[batch_size, section_length, number_of_different_words])
 # y holds the predicted data at the current batch
 y = tf.placeholder(tf.float32, shape=[batch_size, number_of_different_words])
 
 # use normal distribution for weights and biases
-weights = tf.Variable(tf.truncated_normal([number_hidden_units, number_of_different_words]))
-biases = tf.Variable(tf.truncated_normal([number_of_different_words]))
+weights = tf.Variable(tf.random.truncated_normal([number_hidden_units, number_of_different_words]))
+biases = tf.Variable(tf.random.truncated_normal([number_of_different_words]))
 
 gru_cell = tf.contrib.rnn.GRUCell(num_units=number_hidden_units)
 
@@ -94,10 +99,9 @@ outputs, state = tf.nn.dynamic_rnn(gru_cell, inputs=X, dtype=tf.float32)
 # transpose from [batch_size, section_length, number_of_different words] to
 # [section_length, batch_size, number_of_different words]
 outputs = tf.transpose(outputs, perm=[1, 0, 2])
+last_output = tf.gather(outputs, int(outputs.get_shape()[0]) - 1)
 
-last_output = tf.gather(outputs, int(outputs.get_shape[0]) - 1)
-
-prediction = tf.matmull(last_output, weights) + biases
+prediction = tf.matmul(last_output, weights) + biases
 # calculate the loss by comparing with the predicted data in y
 loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=prediction)
 total_loss = tf.reduce_mean(loss)
@@ -132,3 +136,5 @@ with tf.Session() as sess:
     if iter % 10 == 0:
         print("Loss:", training_loss)
         saver.save(sess, 'ckpt/model', global_step=iter)
+
+print("Done!")
