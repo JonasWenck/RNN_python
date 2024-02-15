@@ -1,8 +1,9 @@
-import numpy as np
-import tensorflow as tf
-import sys
 import collections
 import os
+
+import numpy as np
+import tensorflow as tf
+
 # ignore CPU warning as we use GPU anyway (
 # https://stackoverflow.com/questions/47068709/your-cpu-supports-instructions-that-this-tensorflow-binary-was-not
 # -compiled-to-u)
@@ -133,8 +134,50 @@ with tf.Session() as sess:
             iter_offset = add_from_the_beginning
 
     _, training_loss = sess.run([optimizer, total_loss], feed_dict={X: training_X_batch, y: training_y_batch})
-    if iter % 10 == 0:
-        print("Loss:", training_loss)
-        saver.save(sess, 'ckpt/model', global_step=iter)
+    print("Loss:", training_loss)
+    saver.save(sess, 'ckpt/model', global_step=iter)
 
-print("Done!")
+print("Done with training!")
+
+starting_sentence = ('I plan to make the world a better place because I love seeing how people grow and do in '
+                     'their lives')
+
+with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    model = tf.train.latest_checkpoint('ckpt')
+    saver = tf.train.Saver()
+    saver.restore(sess, model)
+
+    generated_text = starting_sentence
+    words_in_starting_sentence = starting_sentence.split()
+    test_X = np.zeros((batch_size, section_length, number_of_different_words))
+    for index, word in enumerate(words_in_starting_sentence[:-1]):
+        if index < section_length:
+            test_X[0, index, word2id[word]] = 1
+
+    _ = sess.run(prediction, feed_dict={X: test_X})
+
+    test_last_X = np.zeros((1, 1, number_of_different_words))
+    test_last_X[0, 0, word2id[words_in_starting_sentence[-1]]] = 1
+    test_next_X = np.reshape(np.concatenate((test_X[0, 1:], test_last_X[0])),
+                             (1, section_length, number_of_different_words))
+
+
+    def prediction_to_one_hot(prediction):
+        zero_array = np.zeros(np.shape(prediction))
+        zero_array[np.argmax(prediction)] = 1
+        return zero_array
+
+
+    for i in range(1000):
+        # the text_next_X has the shape (1, 20, 6257) but our X needs the shape (512, 20, 6257) so we repeat 512
+        # times to achieve the required shape
+        test_next_X_repeated = np.repeat(test_next_X, 512, axis=0)
+        test_prediction = prediction.eval({X: test_next_X_repeated})[0]
+        next_word_one_hot = prediction_to_one_hot(test_prediction)
+        next_word = id2word[np.argmax(next_word_one_hot)]
+        generated_text += " " + next_word + " "
+        test_next_X = np.reshape(
+            np.concatenate((test_next_X[0, 1:], np.reshape(next_word_one_hot, (1, number_of_different_words)))),
+            (1, section_length, number_of_different_words))
+        print("Generated text: ", generated_text)
